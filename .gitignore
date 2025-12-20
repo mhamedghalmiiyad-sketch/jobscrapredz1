@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# secrets
+.env
+
+# local outputs / state
+jobs.json
+seen-urls.json
+keywords.state.json
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
