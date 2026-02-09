@@ -38,16 +38,7 @@ function sleep(ms) {
 
 function cleanPostText(text) {
     let t = text || "";
-    t = t.replace(/Feed post number \d+/gi, "")
-         .replace(/\d+ followers/gi, "")
-         .replace(/Visible to anyone on or off LinkedIn/gi, "")
-         .replace(/\d+[dDhHmM] •/g, "")
-         .replace(/Show translation/gi, "")
-         .replace(/Like Comment Repost Send/gi, "")
-         .replace(/See more/gi, "")
-         .replace(/\d+ comments/gi, "")
-         .replace(/\d+ reposts/gi, "")
-         .replace(/\n\s*\n/g, "\n");
+    t = t.replace(/\n\s*\n/g, "\n");
     return t.trim();
 }
 
@@ -111,184 +102,7 @@ async function safeClick(page, selector) {
     return false;
 }
 
-function parseNetscapeCookies(text) {
-    const cookies = [];
-    text.split('\n').forEach(line => {
-        if (line.startsWith('#') || line.trim() === '') return;
-        const parts = line.split('\t');
-        if (parts.length >= 7) {
-            cookies.push({
-                domain: parts[0],
-                path: parts[2],
-                secure: parts[3] === 'TRUE',
-                expires: parseInt(parts[4]),
-                name: parts[5],
-                value: parts[6].trim()
-            });
-        }
-    });
-    return cookies;
-}
-
-async function getTargetLinks() {
-    const remoteUrl = argEnv("LINKS_URL", "");
-    const localFile = argEnv("LINKS_FILE", "links.txt");
-    let links = [];
-
-    if (remoteUrl && remoteUrl.startsWith("http")) {
-        console.log(`[Config] Fetching target list from Remote Command Center...`);
-        try {
-            const resp = await fetch(remoteUrl);
-            if (resp.ok) {
-                const text = await resp.text();
-                links = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith("#"));
-                console.log(`[Config] Acquired ${links.length} targets from cloud.`);
-                return links;
-            }
-        } catch (e) {
-            console.warn(`[Config] Remote fetch failed: ${e.message}`);
-        }
-    }
-
-    const localPath = toAbs(localFile);
-    if (fs.existsSync(localPath)) {
-        console.log(`[Config] Reading local target file: ${localFile}`);
-        const text = fs.readFileSync(localPath, 'utf-8');
-        links = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith("#"));
-        return links;
-    }
-
-    console.warn("[Config] NO TARGETS FOUND.");
-    return [];
-}
-
-async function loginToLinkedIn(page) {
-    console.log("[Auth] Initiating LinkedIn Infiltration...");
-    const cookiePath = toAbs(argEnv("LINKEDIN_COOKIE_FILE", "linkedin.json"));
-    
-    if (fs.existsSync(cookiePath)) {
-        console.log(`[Auth] Loading cookies from ${cookiePath}`);
-        try {
-            const raw = fs.readFileSync(cookiePath, 'utf-8');
-            let cookies = [];
-            if (raw.trim().startsWith('[') || raw.trim().startsWith('{')) {
-                cookies = JSON.parse(raw);
-            } else {
-                cookies = parseNetscapeCookies(raw);
-            }
-            if (cookies.length > 0) await page.setCookie(...cookies);
-        } catch (e) {
-            console.warn("[Auth] Cookie parse error:", e.message);
-        }
-    }
-
-    console.log("[Auth] Verifying Session...");
-    try {
-        await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 45000 }); // Reduced timeout
-    } catch (e) {}
-    
-    const isLoggedIn = await page.evaluate(() => {
-        return !!(document.querySelector('.global-nav__me-photo') || window.location.href.includes('/feed'));
-    });
-
-    if (isLoggedIn) {
-        console.log("[Auth] Session Active ✅");
-        return true;
-    }
-
-    console.warn("[Auth] ❌ Session Dead. Refresh cookies locally.");
-    return false;
-}
-
-async function scrapeLinkedInCompanyPosts(page, rawLink, bank) {
-    let url = rawLink.trim();
-    if (!url.includes("/posts/")) url = url.replace(/\/$/, "") + "/posts/?feedView=all";
-    
-    console.log(`[LinkedIn-Posts] Targeting: ${url}`);
-    const posts = [];
-    
-    try {
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-        await safeClick(page, '.modal__dismiss');
-        
-        await page.evaluate(async () => {
-            const distance = 800;
-            for(let i=0; i<6; i++) { // Reduced scrolls
-                window.scrollBy(0, distance);
-                await new Promise(r => setTimeout(r, 600));
-            }
-        });
-        
-        await page.evaluate(() => {
-            document.querySelectorAll('.feed-shared-inline-show-more-text__see-more-less-toggle').forEach(b => b.click());
-        });
-        await sleep(1000);
-
-        const extracted = await page.evaluate(() => {
-            const nodes = Array.from(document.querySelectorAll('div.feed-shared-update-v2, li.mb-2, div.occludable-update'));
-            return nodes.map(node => {
-                const fullText = node.innerText || node.textContent || "";
-                const timeEl = node.querySelector('.update-components-actor__sub-description span[aria-hidden="true"]') ||
-                               node.querySelector('.feed-shared-actor__sub-description');
-                const timeText = timeEl ? timeEl.innerText.trim().split("•")[0].trim() : "";
-                const companyEl = node.querySelector('.update-components-actor__title span[dir="ltr"] span') ||
-                                  node.querySelector('.feed-shared-actor__title');
-                const company = companyEl ? companyEl.innerText.trim() : "LinkedIn Company";
-
-                let directLink = window.location.href;
-                const urnContainer = node.closest('[data-urn]');
-                if (urnContainer) {
-                    const urn = urnContainer.getAttribute('data-urn');
-                    directLink = `https://www.linkedin.com/feed/update/${urn}/`;
-                }
-
-                return { text: fullText.trim(), timeRaw: timeText, url: directLink, company: company };
-            });
-        });
-
-        console.log(`[LinkedIn-Posts] Raw candidates found: ${extracted.length}`);
-
-        for (const p of extracted) {
-            if (!p.text || p.text.length < 5) continue;
-            const hasCVKeyword = /\b(cv|c\.v|curriculum|resume|envoyer|recrute|opérateur|hassi|job|offre)\b/i.test(p.text);
-            const techMatches = matchBank(p.text, bank);
-            const hasTechKeyword = techMatches.length > 0;
-
-            if (!hasCVKeyword && !hasTechKeyword) continue;
-
-            const t = p.timeRaw.toLowerCase();
-            let isRecent = false;
-            if (t.includes("m") && !t.includes("mo") && !t.includes("mar") && !t.includes("mai")) isRecent = true;
-            else if (t.includes("h")) isRecent = true;
-            else if (t.includes("d") || t.includes("j")) isRecent = true;
-            else if (t.includes("w") || t.includes("sem")) {
-                const num = parseInt(t.match(/\d+/)?.[0] || "99");
-                if (num <= 1) isRecent = true; 
-            }
-            if (!t) isRecent = false;
-
-            if (isRecent) {
-                let hitTags = [];
-                if (hasCVKeyword) hitTags.push("Recrutement");
-                if (hasTechKeyword) hitTags.push(...techMatches.slice(0, 3));
-                posts.push({
-                    title: `📢 Post: ${p.company}`,
-                    company: p.company,
-                    location: "LinkedIn Feed",
-                    posted: p.timeRaw,
-                    url: p.url,
-                    source: "LinkedIn-Post",
-                    fullText: p.text,
-                    hits: hitTags
-                });
-            }
-        }
-    } catch (e) {
-        console.warn(`[LinkedIn-Posts] Failed: ${e.message}`);
-    }
-    return posts;
-}
-
+// --- MODULE: GSK ---
 async function scrapeGSK(page) {
     const jobs = [];
     try {
@@ -309,6 +123,7 @@ async function scrapeGSK(page) {
     return jobs;
 }
 
+// --- MODULE: EMPLOITIC ---
 async function scrapeEmploitic(page, baseUrl, pageNum) {
     const url = new URL(baseUrl);
     if(pageNum>1) url.searchParams.set("page", pageNum); else url.searchParams.delete("page");
@@ -340,7 +155,7 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
       await sendTelegramMessage({
           token: TELEGRAM_BOT_TOKEN,
           chatId: TELEGRAM_CHAT_ID,
-          textHtml: `🚀 <b>WORM-AI Initiated</b>\nStarting Intelligence Gathering...`
+          textHtml: `🚀 <b>WORM-AI Initiated</b>\nScanning Emploitic & GSK...`
       });
   }
 
@@ -350,23 +165,21 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
 
   if (bankOnly) return { ok: true, reason, bankSize: bank.length };
 
-  const companyLinks = await getTargetLinks();
   const sentState = readJsonSafe(SENT_FILE, { sent: {} });
   const sent = sentState.sent || {};
 
-  // --- MEMORY OPTIMIZATION ARGS ---
+  // KEEPING MEMORY OPTIMIZATIONS (Just in case)
   const browser = await puppeteer.launch({
     headless: "new",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage", // CRITICAL FOR RENDER
+      "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
       "--no-first-run",
       "--no-zygote",
-      "--single-process", // DANGEROUS BUT SAVES RAM
-      "--disable-gpu",
-      "--disable-features=site-per-process"
+      "--single-process",
+      "--disable-gpu"
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
   });
@@ -375,19 +188,18 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1366, height: 768 });
   
-  // --- AGGRESSIVE BLOCKING ---
+  // BLOCK ASSETS TO SAVE BANDWIDTH/RAM
   await page.setRequestInterception(true);
   page.on("request", (req) => {
     const type = req.resourceType();
-    if (["image", "font", "media", "stylesheet", "other"].includes(type)) req.abort(); // Block CSS too!
+    if (["image", "font", "media", "stylesheet"].includes(type)) req.abort();
     else req.continue();
   });
 
   const allJobs = [];
   const seen = new Set();
-  const isAuthenticated = await loginToLinkedIn(page);
 
-  // EMPLOITIC
+  // 1. EMPLOITIC SCAN
   for (let p = 1; p <= PAGES; p++) {
       try {
           const items = await scrapeEmploitic(page, EMPLOITIC_URL, p);
@@ -396,33 +208,19 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
       await sleep(1000);
   }
 
-  // GSK
+  // 2. GSK SCAN
   const gskJobs = await scrapeGSK(page);
   gskJobs.forEach(j => { if(!seen.has(j.url)) { seen.add(j.url); allJobs.push(j); }});
 
-  // LINKEDIN
-  if (isAuthenticated) {
-      for (const link of companyLinks) {
-          const posts = await scrapeLinkedInCompanyPosts(page, link, bank);
-          posts.forEach(j => { 
-              const uniqueId = j.url;
-              if(!seen.has(uniqueId)) { seen.add(uniqueId); allJobs.push(j); }
-          });
-          // Force Garbage Collection hint by clearing array (JS handles it, but good practice)
-          posts.length = 0; 
-          await sleep(1500);
-      }
-  }
-
-  // SORTING
+  console.log(`[WORM-AI] Total Intelligence Gathered: ${allJobs.length}`);
+  
+  // FILTER & RANK
   const candidates = [];
   for (const j of allJobs) {
     if (sent[j.url]) continue;
-    if (j.source === "GSK") candidates.push({ ...j, hits: ["GSK-Target"], score: 999 });
-    else if (j.source === "LinkedIn-Post") {
-        let score = 800; 
-        if (j.hits && j.hits.length > 0) score = 1200;
-        candidates.push({ ...j, score: score });
+
+    if (j.source === "GSK") {
+        candidates.push({ ...j, hits: ["GSK-Target"], score: 999 });
     } else {
         const hay = `${j.title} ${j.company} ${j.location}`;
         const hits = matchBank(hay, bank);
@@ -435,16 +233,17 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
   let sentCount = 0;
 
   for (const j of toSend) {
-    let detailText = j.fullText || ""; 
-    if (!detailText && j.source !== "LinkedIn-Post") {
-        try {
+    let detailText = ""; 
+    // Emploitic sometimes needs a visit to get full details, but let's skip to save RAM if not needed
+    // or keep it light:
+    if (j.source === "GSK") {
+         try {
             await page.goto(j.url, { waitUntil: "domcontentloaded", timeout: 15000 });
-            const sel = j.source === "GSK" ? ".job-description" : "main";
-            detailText = await page.evaluate((s) => document.querySelector(s)?.innerText || "", sel);
+            detailText = await page.evaluate(() => document.querySelector(".job-description")?.innerText || "");
         } catch {}
     }
 
-    const snippet = pickSnippet(detailText, 600);
+    const snippet = pickSnippet(detailText || j.title, 600);
     const matched = (j.hits || []).slice(0, 6).join(", ");
     
     const msg =
@@ -467,19 +266,14 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
 
   await browser.close();
 
-  // SEND REPORT MESSAGE
+  // FINAL REPORT
   if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
       const summaryMsg = 
         `🏁 <b>Mission Report</b>\n\n` +
-        `🔎 <b>Sources Scanned:</b>\n` +
-        `• Emploitic (${PAGES} pages)\n` +
-        `• GSK Careers\n` +
-        `• LinkedIn Targets (${companyLinks.length} companies)\n\n` +
-        `📊 <b>Stats:</b>\n` +
-        `• Total Found: ${allJobs.length}\n` +
-        `• Relevant Matches: ${candidates.length}\n` +
-        `• <b>New Sent: ${sentCount}</b>\n\n` +
-        (sentCount === 0 ? `<i>😴 No new relevant opportunities found.</i>` : `<i>🔥 Action required.</i>`);
+        `🔎 <b>Sources:</b> Emploitic (${PAGES} pg) + GSK\n` +
+        `📊 <b>Found:</b> ${allJobs.length} total\n` +
+        `✅ <b>Matches:</b> ${candidates.length}\n` +
+        `📩 <b>Sent:</b> ${sentCount}`;
 
       await sendTelegramMessage({
           token: TELEGRAM_BOT_TOKEN,
