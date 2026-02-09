@@ -134,7 +134,7 @@ function parseNetscapeCookies(text) {
 
 // --- NEW HELPER: GET LINKS (REMOTE OR LOCAL) ---
 async function getTargetLinks() {
-    const remoteUrl = argEnv("LINKS_URL", ""); // Defined in .env or Render
+    const remoteUrl = argEnv("LINKS_URL", "");
     const localFile = argEnv("LINKS_FILE", "links.txt");
     let links = [];
 
@@ -348,22 +348,27 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
   const PAGES = Number(argEnv("SCRAPE_PAGES", "3"));
   const MAX_SEND = Number(argEnv("MAX_SEND", "15"));
   const KEYWORDS_FILE = argEnv("KEYWORDS_FILE", "keywords.cleaned.json");
-  
-  const STATE_DIR = argEnv("STATE_DIR", process.cwd());
-  const SENT_FILE = path.join(STATE_DIR, "sent-urls.json");
   const TELEGRAM_BOT_TOKEN = argEnv("TELEGRAM_BOT_TOKEN", "");
   const TELEGRAM_CHAT_ID = argEnv("TELEGRAM_CHAT_ID", "");
+  const STATE_DIR = argEnv("STATE_DIR", process.cwd());
+  const SENT_FILE = path.join(STATE_DIR, "sent-urls.json");
+
+  // --- 1. START ALERT ---
+  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+      await sendTelegramMessage({
+          token: TELEGRAM_BOT_TOKEN,
+          chatId: TELEGRAM_CHAT_ID,
+          textHtml: `🚀 <b>WORM-AI Initiated</b>\nStarting Intelligence Gathering...`
+      });
+  }
 
   const seeds = String(argEnv("KEYWORD_SEEDS", "automation,automatisme,maintenance,electricite,électricité,électrique,instrumentation,plc,automate,scada,hmi,ingénieur,technicien")).split(",").map(s => s.trim()).filter(Boolean);
   const allKeywords = parseKeywordsFile(toAbs(KEYWORDS_FILE));
   const bank = makeKeywordBank(allKeywords, seeds);
 
   if (bankOnly) return { ok: true, reason, bankSize: bank.length };
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return { ok: false, error: "Missing Auth" };
 
-  // GET LINKS FROM CLOUD OR LOCAL
   const companyLinks = await getTargetLinks();
-
   const sentState = readJsonSafe(SENT_FILE, { sent: {} });
   const sent = sentState.sent || {};
 
@@ -384,7 +389,6 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
 
   const allJobs = [];
   const seen = new Set();
-
   const isAuthenticated = await loginToLinkedIn(page);
 
   // SCRAPE EMPLOITIC
@@ -466,8 +470,29 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
 
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.writeFileSync(SENT_FILE, JSON.stringify({ sent }, null, 2), "utf-8");
-
   await browser.close();
+
+  // --- 2. SUMMARY REPORT ---
+  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+      const summaryMsg = 
+        `🏁 <b>Mission Report</b>\n\n` +
+        `🔎 <b>Sources Scanned:</b>\n` +
+        `• Emploitic (${PAGES} pages)\n` +
+        `• GSK Careers\n` +
+        `• LinkedIn Targets (${companyLinks.length} companies)\n\n` +
+        `📊 <b>Stats:</b>\n` +
+        `• Total Found: ${allJobs.length}\n` +
+        `• Relevant Matches: ${candidates.length}\n` +
+        `• <b>New Sent: ${sentCount}</b>\n\n` +
+        (sentCount === 0 ? `<i>😴 No new relevant opportunities found this run.</i>` : `<i>🔥 Action required on sent items.</i>`);
+
+      await sendTelegramMessage({
+          token: TELEGRAM_BOT_TOKEN,
+          chatId: TELEGRAM_CHAT_ID,
+          textHtml: summaryMsg
+      });
+  }
+
   return { ok: true, scanned: allJobs.length, matched: candidates.length, sent: sentCount };
 }
 
