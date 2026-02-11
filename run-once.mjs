@@ -412,7 +412,7 @@ export async function runOnce({ reason = "manual", bankOnly = false } = {}) {
     if (j.source && (j.source.startsWith("Henkel") || j.source === "GSK")) {
         candidates.push({ ...j, score: 999 });
     } 
-    // GENERAL SOURCES (Emploitic, Ouedkniss) -> REQUIRE KEYWORD MATCH
+    // GENERAL SOURCES (Emploitic, Ouedkniss, LinkedIn) -> REQUIRE KEYWORD MATCH
     else {
         const hay = `${j.title} ${j.company} ${j.location}`;
         const hits = matchBank(hay, bank);

@@ -9,7 +9,7 @@ puppeteer.use(StealthPlugin());
 // --- CONFIGURATION ---
 const JSON_FILE = "algeria_all_results_v3.json"; 
 const COOKIE_FILE = process.env.LINKEDIN_COOKIE_FILE || "linkedin..txt"; 
-const PROGRESS_FILE = "follow_progress.json"; // NEW: Saves your spot
+const PROGRESS_FILE = "follow_progress.json"; 
 const EMAIL = process.env.LINKEDIN_EMAIL;
 const PASSWORD = process.env.LINKEDIN_PASSWORD;
 
@@ -45,7 +45,7 @@ function cleanCompanyName(name) {
     return clean;
 }
 
-// --- BROWSER ---
+// --- BROWSER LAUNCHER ---
 async function launchBrowser() {
     return await puppeteer.launch({
         headless: false,
@@ -68,6 +68,9 @@ async function launchBrowser() {
 async function authenticate(page) {
     console.log(`[Auth] Checking Session...`);
     
+    // Set global timeout to 60 seconds (prevents 30s errors)
+    page.setDefaultNavigationTimeout(60000);
+
     if (fs.existsSync(COOKIE_FILE)) {
         try {
             const cookies = JSON.parse(fs.readFileSync(COOKIE_FILE, 'utf-8'));
@@ -76,7 +79,7 @@ async function authenticate(page) {
     }
 
     try {
-        await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded" });
     } catch (e) {}
 
     let isLoggedIn = await page.evaluate(() => 
@@ -96,7 +99,7 @@ async function authenticate(page) {
         await page.type('#username', EMAIL, { delay: 50 });
         await page.type('#password', PASSWORD, { delay: 50 });
         await page.click('button[type="submit"]');
-        await page.waitForNavigation({ timeout: 60000, waitUntil: "domcontentloaded" });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded" });
 
         isLoggedIn = await page.evaluate(() => !!document.querySelector('.global-nav__me-photo'));
         if (isLoggedIn) {
@@ -116,7 +119,8 @@ async function searchAndFollow(page, rawName) {
     const searchUrl = `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(cleanName)}&origin=SWITCH_SEARCH_VERTICAL`;
     
     try {
-        await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+        // Increased timeout to 60s
+        await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(rand(3000, 5000)); 
 
         const companyUrl = await page.evaluate(() => {
@@ -139,7 +143,7 @@ async function searchAndFollow(page, rawName) {
         }
 
         console.log(`   👉 Clicking Result: ${companyUrl}`);
-        await page.goto(companyUrl, { waitUntil: "domcontentloaded" });
+        await page.goto(companyUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(rand(2000, 4000));
 
         const alreadyFollowing = await page.evaluate(() => {
@@ -176,14 +180,15 @@ async function searchAndFollow(page, rawName) {
 
     } catch (e) {
         console.warn(`   ⚠️ Error: ${e.message}`);
+        // Return explicit ERROR status to trigger restart logic
         return "ERROR";
     }
 }
 
 // --- MAIN ---
 (async () => {
-    console.log("🚀 WORM-AI: GLOBAL EXPANSION (NUCLEAR MODE + RESUME)");
-    console.log("⚠️ WARNING: SAFETY LIMITS REMOVED. MONITOR FOR BANS.");
+    console.log("🚀 WORM-AI: SELF-HEALING MODE");
+    console.log("⚠️ WARNING: SAFETY LIMITS REMOVED.");
 
     let companies = [];
     try {
@@ -195,8 +200,9 @@ async function searchAndFollow(page, rawName) {
         process.exit(1); 
     }
 
-    const browser = await launchBrowser();
-    const page = await browser.newPage();
+    // Initialize Browser
+    let browser = await launchBrowser();
+    let page = await browser.newPage();
     await page.setViewport({ width: 1366, height: 768 });
 
     if (!await authenticate(page)) {
@@ -204,27 +210,53 @@ async function searchAndFollow(page, rawName) {
         process.exit(1);
     }
 
-    // --- RESUME LOGIC ---
-    let startIndex = loadProgress();
-    if (startIndex > 0) {
-        console.log(`🔄 RESUMING CAMPAIGN from company #${startIndex + 1}...`);
-    }
-
     const LIMIT = companies.length;
+    let startIndex = loadProgress();
+    if (startIndex > 0) console.log(`🔄 RESUMING CAMPAIGN from company #${startIndex + 1}...`);
+    
     let successCount = 0;
+    let consecutiveErrors = 0; // Track consecutive failures
 
     for (let i = startIndex; i < LIMIT; i++) {
         const company = companies[i];
-        
         const progress = ((i + 1) / LIMIT * 100).toFixed(2);
         console.log(`\n[${i + 1}/${LIMIT}] (${progress}%) Processing...`);
         
+        // Run Search
         const status = await searchAndFollow(page, company);
         
-        if (status === "SUCCESS") successCount++;
+        if (status === "SUCCESS") {
+            successCount++;
+            consecutiveErrors = 0; // Reset error count on success
+        } else if (status === "ERROR") {
+            consecutiveErrors++;
+            console.log(`   🚨 Consecutive Errors: ${consecutiveErrors}/3`);
+        } else {
+            // NOT_FOUND or ALREADY does not count as a crash error
+            consecutiveErrors = 0;
+        }
 
-        // SAVE PROGRESS AFTER EVERY STEP
+        // SAVE PROGRESS
         saveProgress(i + 1);
+
+        // --- SELF-HEALING LOGIC ---
+        // If we hit 3 errors in a row (e.g. Navigation Timeout), restart browser
+        if (consecutiveErrors >= 3) {
+            console.log("\n🛑 DETECTED BROWSER FREEZE (3 Timeouts). RESTARTING BROWSER...");
+            try { await browser.close(); } catch(e) {} // Force close old browser
+            
+            await sleep(5000); // Wait for processes to clear
+            
+            // Re-launch
+            console.log("🔄 Relaunching WORM-AI Browser...");
+            browser = await launchBrowser();
+            page = await browser.newPage();
+            await page.setViewport({ width: 1366, height: 768 });
+            await authenticate(page);
+            consecutiveErrors = 0; // Reset counter
+            console.log("✅ Browser Restarted. Continuing...");
+        }
+        // --------------------------
 
         const delay = rand(...SEARCH_DELAY);
         process.stdout.write(`   ⏳ Cooldown: ${Math.round(delay/1000)}s...`);
@@ -234,9 +266,6 @@ async function searchAndFollow(page, rawName) {
 
     console.log(`\n🏁 CAMPAIGN FINISHED.`);
     console.log(`👉 New Follows: ${successCount}`);
-    
-    // Reset progress if finished
     saveProgress(0);
-    
     await browser.close();
 })();
