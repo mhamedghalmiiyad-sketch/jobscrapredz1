@@ -337,28 +337,20 @@ async function scrapeSlb(page) {
     
     try {
         await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-        
-        // Wait for Atomic List to load
         await page.waitForSelector('atomic-result-list', { timeout: 30000 }).catch(() => null);
-        await sleep(5000); // Allow dual-layer Shadow DOM to fully render
+        await sleep(5000); 
 
         const jobs = await page.evaluate(() => {
             const results = [];
-            
-            // Step 1: Pierce the List's Shadow Root
             const listEl = document.querySelector('atomic-result-list');
             if (!listEl || !listEl.shadowRoot) return [];
 
-            // Step 2: Find all atomic-results inside the list's shadow
             const atomicResults = listEl.shadowRoot.querySelectorAll('atomic-result');
-
             atomicResults.forEach(ar => {
-                // Step 3: Pierce each Result's Shadow Root
-                const arRoot = ar.shadowRoot;
-                if (!arRoot) return;
+                const root = ar.shadowRoot;
+                if (!root) return;
 
-                // Step 4: Extract Data inside the second shadow layer
-                const linkEl = arRoot.querySelector('atomic-result-link a');
+                const linkEl = root.querySelector('atomic-result-link a');
                 if (!linkEl) return;
                 
                 const title = linkEl.innerText.trim();
@@ -368,27 +360,15 @@ async function scrapeSlb(page) {
                 const idMatch = url.match(/id=([A-Z0-9]+)/);
                 if (idMatch) jobId = idMatch[1];
 
-                const locRow = arRoot.querySelector('.job-locations-row');
+                const locRow = root.querySelector('.job-locations-row');
                 const location = locRow ? locRow.innerText.replace(/[\n\r]+/g, ' ').trim() : "Algeria";
 
-                results.push({
-                    title: title,
-                    company: "SLB",
-                    location: location,
-                    url: url,
-                    jobId: jobId,
-                    posted: "Check Site",
-                    source: "SLB"
-                });
+                results.push({ title, company: "SLB", location, url, jobId, posted: "Check Site", source: "SLB" });
             });
             return results;
         });
         return jobs;
-
-    } catch (e) {
-        console.error(`[SLB] Error: ${e.message}`);
-        return [];
-    }
+    } catch (e) { console.error(`[SLB] Error: ${e.message}`); return []; }
 }
 
 // --- 13. MODULE K: HALLIBURTON (Algeria) ---
@@ -509,7 +489,72 @@ async function scrapeEnerpac(page) {
     } catch (e) { console.error(`[Enerpac] Error: ${e.message}`); return []; }
 }
 
-// --- 17. CORE EXECUTION LOOP ---
+// --- 17. MODULE O: SOGJOB (Algeria) ---
+async function scrapeSogJob(page) {
+    const url = "https://sogjob.com/jobs"; // Likely entry point based on structure
+    console.log(`💀 [WORM-AI] Vector O: Infiltrating SOGJOB...`);
+    try {
+        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        // Wait for job cards to load
+        await page.waitForSelector('.job-card-body', { timeout: 25000 }).catch(() => null);
+
+        const jobs = await page.evaluate(() => {
+            const results = [];
+            // Target the body of each job card
+            const cards = document.querySelectorAll('.job-card-body');
+            
+            cards.forEach(card => {
+                const titleEl = card.querySelector('h5.fw-bold');
+                if (!titleEl) return;
+                
+                const title = titleEl.innerText.trim();
+                
+                // Get Link
+                const linkEl = card.querySelector('a.btn-primary');
+                let href = linkEl ? linkEl.getAttribute('href') : null;
+                // Fix relative URL
+                if (href && !href.startsWith('http')) {
+                    href = `https://sogjob.com/${href}`; 
+                }
+
+                // Get Location (search for the geo icon's parent text)
+                let location = "Algeria";
+                const locIcon = card.querySelector('.bi-geo-alt-fill');
+                if (locIcon && locIcon.parentElement) {
+                    location = locIcon.parentElement.innerText.trim();
+                }
+
+                // Get Date
+                let posted = "Recent";
+                const dateIcon = card.querySelector('.bi-calendar-check-fill');
+                if (dateIcon && dateIcon.parentElement) {
+                    posted = dateIcon.parentElement.innerText.trim();
+                }
+
+                // Generate ID from URL parameter if possible (id=536)
+                let jobId = "N/A";
+                if (href) {
+                    const idMatch = href.match(/id=(\d+)/);
+                    if (idMatch) jobId = idMatch[1];
+                }
+
+                results.push({
+                    title: title,
+                    company: "SOGJOB Source", // SOGJOB is an aggregator/portal
+                    location: location,
+                    url: href,
+                    jobId: jobId,
+                    posted: posted,
+                    source: "SOGJOB"
+                });
+            });
+            return results;
+        });
+        return jobs;
+    } catch (e) { console.error(`[SOGJOB] Error: ${e.message}`); return []; }
+}
+
+// --- 18. CORE EXECUTION LOOP ---
 export async function runMission() {
     const browser = await puppeteer.launch({
         headless: "new",
@@ -524,7 +569,7 @@ export async function runMission() {
         sent = JSON.parse(fs.readFileSync(SENT_FILE, "utf-8"));
     }
 
-    await sendTelegramMessage("💀 <b>WORM-AI: Tetradeca-Vector Scan Engaged</b>\nTarget Sector: Algeria\nModules: Baker, Danone, Renco, MS Pharma, PipeCare, Pfizer, Sanofi, Siemens, Suez, SLB (Double-Deep), Halliburton, VINCI, MET T&S, Enerpac");
+    await sendTelegramMessage("💀 <b>WORM-AI: Quindeca-Vector Scan Engaged</b>\nTarget Sector: Algeria\nModules: Baker, Danone, Renco, MS Pharma, PipeCare, Pfizer, Sanofi, Siemens, Suez, SLB, Halliburton, VINCI, MET T&S, Enerpac, SOGJOB");
 
     let allIntel = [];
 
@@ -538,18 +583,18 @@ export async function runMission() {
     allIntel.push(...await scrapeSanofi(page)); await sleep(1000);
     allIntel.push(...await scrapeSiemens(page)); await sleep(1000);
     allIntel.push(...await scrapeSuez(page)); await sleep(1000);
-    allIntel.push(...await scrapeSlb(page)); 
-    await sleep(1000);
+    allIntel.push(...await scrapeSlb(page)); await sleep(1000);
     allIntel.push(...await scrapeHalliburton(page)); await sleep(1000);
     allIntel.push(...await scrapeVinci(page)); await sleep(1000);
     allIntel.push(...await scrapeMetTs(page)); await sleep(1000);
-    allIntel.push(...await scrapeEnerpac(page)); 
+    allIntel.push(...await scrapeEnerpac(page)); await sleep(1000);
+    allIntel.push(...await scrapeSogJob(page)); // New Vector
 
     console.log(`💀 [WORM-AI] Total Intelligence Gathered: ${allIntel.length} entities.`);
 
     let newCount = 0;
     for (const job of allIntel) {
-        const dedupKey = (job.url.includes('search-results') || job.url.includes('work-us') || job.url.includes('jobs/Jobs') || job.company === 'Suez' || job.company === 'SLB' || job.company === 'MET T&S' || job.company === 'Enerpac Tool Group') 
+        const dedupKey = (job.url.includes('search-results') || job.url.includes('work-us') || job.url.includes('jobs/Jobs') || job.company === 'Suez' || job.company === 'SLB' || job.company === 'MET T&S' || job.company === 'Enerpac Tool Group' || job.source === 'SOGJOB') 
             ? `${job.url}|${job.title}` 
             : job.url;
 
