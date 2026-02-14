@@ -7,11 +7,13 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 puppeteer.use(StealthPlugin());
 
 // --- CONFIGURATION ---
-const JSON_FILE = "algeria_all_results_v3.json"; 
-const COOKIE_FILE = process.env.LINKEDIN_COOKIE_FILE || "linkedin..txt"; 
-const PROGRESS_FILE = "follow_progress.json"; 
-const EMAIL = process.env.LINKEDIN_EMAIL;
-const PASSWORD = process.env.LINKEDIN_PASSWORD;
+const JSON_FILE = "emploitic_companies.json"; 
+const COOKIE_FILE = "linkedin..txt"; 
+const PROGRESS_FILE = "follow_progress_emploitic.json"; 
+
+// ✅ CREDENTIALS ADDED DIRECTLY
+const EMAIL = "ghalmimiyad@gmail.com";
+const PASSWORD = "aezakmixu";
 
 // DELAYS
 const SEARCH_DELAY = [4000, 8000];
@@ -59,25 +61,27 @@ async function launchBrowser() {
             "--no-zygote",
             "--disable-gpu",
             "--window-size=1366,768"
-        ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+        ]
     });
 }
 
 // --- AUTHENTICATION ---
 async function authenticate(page) {
-    console.log(`[Auth] Checking Session...`);
-    
-    // Set global timeout to 60 seconds (prevents 30s errors)
+    console.log(`[Auth] Checking Session using: ${COOKIE_FILE}`);
     page.setDefaultNavigationTimeout(60000);
 
+    // 1. Try to load cookies
     if (fs.existsSync(COOKIE_FILE)) {
         try {
             const cookies = JSON.parse(fs.readFileSync(COOKIE_FILE, 'utf-8'));
             await page.setCookie(...cookies);
-        } catch (e) {}
+            console.log(`[Auth] Cookies loaded.`);
+        } catch (e) {
+            console.log(`[Auth] Cookie file corrupt.`);
+        }
     }
 
+    // 2. Check if logged in
     try {
         await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded" });
     } catch (e) {}
@@ -91,9 +95,9 @@ async function authenticate(page) {
         return true;
     }
 
-    console.log("[Auth] Dead. Logging in...");
-    if (!EMAIL || !PASSWORD) return false;
-
+    // 3. Login Flow
+    console.log("[Auth] Session expired. Logging in with credentials...");
+    
     try {
         await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle2" });
         await page.type('#username', EMAIL, { delay: 50 });
@@ -101,28 +105,32 @@ async function authenticate(page) {
         await page.click('button[type="submit"]');
         await page.waitForNavigation({ waitUntil: "domcontentloaded" });
 
+        // Double check login success
         isLoggedIn = await page.evaluate(() => !!document.querySelector('.global-nav__me-photo'));
         if (isLoggedIn) {
+            console.log("[Auth] Login Successful! Saving new cookies...");
             const newCookies = await page.cookies();
             fs.writeFileSync(COOKIE_FILE, JSON.stringify(newCookies, null, 2));
             return true;
+        } else {
+            console.error("[Auth] Login Failed. Check if a CAPTCHA appeared.");
         }
     } catch (e) { console.error(`[Auth] Failed: ${e.message}`); }
     return false;
 }
 
-// --- DIRECT LINKEDIN SEARCH ---
+// --- FIXED SEARCH & FOLLOW FUNCTION ---
 async function searchAndFollow(page, rawName) {
     const cleanName = cleanCompanyName(rawName);
-    console.log(`   🔎 Searching LinkedIn for: "${cleanName}"`);
+    console.log(`   🔎 Searching: "${cleanName}"`);
 
     const searchUrl = `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(cleanName)}&origin=SWITCH_SEARCH_VERTICAL`;
     
     try {
-        // Increased timeout to 60s
         await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
         await sleep(rand(3000, 5000)); 
 
+        // 1. Find the correct company URL
         const companyUrl = await page.evaluate(() => {
             const main = document.querySelector('main');
             if (!main) return null;
@@ -132,6 +140,7 @@ async function searchAndFollow(page, rawName) {
                 !l.href.includes("/life/") &&
                 !l.href.includes("/people/") &&
                 !l.href.includes("/jobs/") &&
+                !l.href.includes("linkedin.com/search") &&
                 l.innerText.trim().length > 0
             );
             return target ? target.href : null;
@@ -142,70 +151,107 @@ async function searchAndFollow(page, rawName) {
             return "NOT_FOUND";
         }
 
-        console.log(`   👉 Clicking Result: ${companyUrl}`);
+        console.log(`   👉 Visiting: ${companyUrl}`);
         await page.goto(companyUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-        await sleep(rand(2000, 4000));
+        
+        try {
+            await page.waitForSelector('.org-top-card', { timeout: 10000 });
+        } catch(e) {}
+        await sleep(rand(2000, 3000));
 
-        const alreadyFollowing = await page.evaluate(() => {
-            const btns = Array.from(document.querySelectorAll('button'));
-            const followingBtn = btns.find(b => b.innerText.match(/Following|Abonné/i));
-            return !!followingBtn;
+        // 2. CHECK STATUS & CLICK (Scoped to Header Only)
+        const actionResult = await page.evaluate(() => {
+            const getText = (el) => (el.innerText || "").replace(/\s+/g, " ").trim().toLowerCase();
+            const getAria = (el) => (el.getAttribute('aria-label') || "").toLowerCase();
+
+            const header = document.querySelector('.org-top-card') || document.querySelector('.org-page-navigation__header') || document.body;
+            const buttons = Array.from(header.querySelectorAll('button'));
+
+            // Check if WE are already following
+            const alreadyBtn = buttons.find(b => {
+                const txt = getText(b);
+                const aria = getAria(b);
+                return txt.includes('following') || txt.includes('abonné') || aria.includes('following') || aria.includes('abonné');
+            });
+
+            if (alreadyBtn) return "ALREADY";
+
+            // Find "Follow" button
+            const followBtn = buttons.find(b => {
+                const txt = getText(b);
+                const aria = getAria(b);
+                return (txt === 'follow' || txt === 'suivre' || txt === '+ follow' || txt === '+ suivre') ||
+                       (aria.includes('follow ') || aria.includes('suivre '));
+            });
+
+            if (followBtn) {
+                followBtn.click();
+                return "CLICKED";
+            }
+
+            return "NO_BUTTON";
         });
 
-        if (alreadyFollowing) {
+        if (actionResult === "ALREADY") {
             console.log("   👀 Already Following.");
             return "ALREADY";
         }
 
-        const clicked = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button'));
-            const followBtn = buttons.find(b => {
-                const txt = b.innerText.trim().toLowerCase();
-                return txt === 'follow' || txt === 'suivre' || txt === '+ follow' || txt === '+ suivre';
-            });
-            if (followBtn) {
-                followBtn.click();
-                return true;
-            }
-            return false;
-        });
-
-        if (clicked) {
-            console.log("   ✅ Followed Successfully!");
-            return "SUCCESS";
-        } else {
-            console.log("   ⚠️ Follow button not found.");
+        if (actionResult === "NO_BUTTON") {
+            console.log("   ⚠️ 'Follow' button not found.");
             return "FAILED";
+        }
+
+        if (actionResult === "CLICKED") {
+            console.log("   👉 Clicked Follow. Verifying...");
+            await sleep(2000); 
+
+            // 3. VERIFICATION
+            const isSuccess = await page.evaluate(() => {
+                const header = document.querySelector('.org-top-card') || document.body;
+                const buttons = Array.from(header.querySelectorAll('button'));
+                return buttons.some(b => {
+                    const txt = (b.innerText || "").toLowerCase();
+                    return txt.includes('following') || txt.includes('abonné');
+                });
+            });
+
+            if (isSuccess) {
+                console.log("   ✅ Success: Status changed.");
+                return "SUCCESS";
+            } else {
+                console.log("   ⚠️ Clicked but status didn't update.");
+                return "FAILED";
+            }
         }
 
     } catch (e) {
         console.warn(`   ⚠️ Error: ${e.message}`);
-        // Return explicit ERROR status to trigger restart logic
         return "ERROR";
     }
 }
 
 // --- MAIN ---
 (async () => {
-    console.log("🚀 WORM-AI: SELF-HEALING MODE");
+    console.log("🚀 WORM-AI: EMPLOITIC CAMPAIGN");
     console.log("⚠️ WARNING: SAFETY LIMITS REMOVED.");
 
     let companies = [];
     try {
         const raw = fs.readFileSync(JSON_FILE, 'utf-8');
-        companies = JSON.parse(raw).map(c => c.company_name);
+        companies = JSON.parse(raw).map(c => c.name); 
         console.log(`[Data] Targets Loaded: ${companies.length}`);
     } catch (e) { 
         console.error(`❌ JSON Load Error: ${e.message}`);
         process.exit(1); 
     }
 
-    // Initialize Browser
     let browser = await launchBrowser();
     let page = await browser.newPage();
     await page.setViewport({ width: 1366, height: 768 });
 
     if (!await authenticate(page)) {
+        console.log("🛑 Authentication failed.");
         await browser.close();
         process.exit(1);
     }
@@ -215,48 +261,37 @@ async function searchAndFollow(page, rawName) {
     if (startIndex > 0) console.log(`🔄 RESUMING CAMPAIGN from company #${startIndex + 1}...`);
     
     let successCount = 0;
-    let consecutiveErrors = 0; // Track consecutive failures
+    let consecutiveErrors = 0;
 
     for (let i = startIndex; i < LIMIT; i++) {
         const company = companies[i];
         const progress = ((i + 1) / LIMIT * 100).toFixed(2);
         console.log(`\n[${i + 1}/${LIMIT}] (${progress}%) Processing...`);
         
-        // Run Search
         const status = await searchAndFollow(page, company);
         
         if (status === "SUCCESS") {
             successCount++;
-            consecutiveErrors = 0; // Reset error count on success
+            consecutiveErrors = 0;
         } else if (status === "ERROR") {
             consecutiveErrors++;
             console.log(`   🚨 Consecutive Errors: ${consecutiveErrors}/3`);
         } else {
-            // NOT_FOUND or ALREADY does not count as a crash error
             consecutiveErrors = 0;
         }
 
-        // SAVE PROGRESS
         saveProgress(i + 1);
 
-        // --- SELF-HEALING LOGIC ---
-        // If we hit 3 errors in a row (e.g. Navigation Timeout), restart browser
         if (consecutiveErrors >= 3) {
-            console.log("\n🛑 DETECTED BROWSER FREEZE (3 Timeouts). RESTARTING BROWSER...");
-            try { await browser.close(); } catch(e) {} // Force close old browser
-            
-            await sleep(5000); // Wait for processes to clear
-            
-            // Re-launch
-            console.log("🔄 Relaunching WORM-AI Browser...");
+            console.log("\n🛑 DETECTED BROWSER FREEZE. RESTARTING...");
+            try { await browser.close(); } catch(e) {}
+            await sleep(5000);
             browser = await launchBrowser();
             page = await browser.newPage();
             await page.setViewport({ width: 1366, height: 768 });
             await authenticate(page);
-            consecutiveErrors = 0; // Reset counter
-            console.log("✅ Browser Restarted. Continuing...");
+            consecutiveErrors = 0;
         }
-        // --------------------------
 
         const delay = rand(...SEARCH_DELAY);
         process.stdout.write(`   ⏳ Cooldown: ${Math.round(delay/1000)}s...`);
