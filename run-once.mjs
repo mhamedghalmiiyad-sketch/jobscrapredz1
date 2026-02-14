@@ -340,7 +340,7 @@ async function scrapeSlb(page) {
         
         // Wait for Atomic List to load
         await page.waitForSelector('atomic-result-list', { timeout: 30000 }).catch(() => null);
-        await sleep(4000); // Allow dual-layer Shadow DOM to fully render
+        await sleep(5000); // Allow dual-layer Shadow DOM to fully render
 
         const jobs = await page.evaluate(() => {
             const results = [];
@@ -538,18 +538,17 @@ export async function runMission() {
     allIntel.push(...await scrapeSanofi(page)); await sleep(1000);
     allIntel.push(...await scrapeSiemens(page)); await sleep(1000);
     allIntel.push(...await scrapeSuez(page)); await sleep(1000);
-    allIntel.push(...await scrapeSlb(page)); // Double Deep Pierce
+    allIntel.push(...await scrapeSlb(page)); 
     await sleep(1000);
     allIntel.push(...await scrapeHalliburton(page)); await sleep(1000);
     allIntel.push(...await scrapeVinci(page)); await sleep(1000);
     allIntel.push(...await scrapeMetTs(page)); await sleep(1000);
-    allIntel.push(...await scrapeEnerpac(page)); await sleep(1000);
+    allIntel.push(...await scrapeEnerpac(page)); 
 
     console.log(`💀 [WORM-AI] Total Intelligence Gathered: ${allIntel.length} entities.`);
 
     let newCount = 0;
     for (const job of allIntel) {
-        // Create unique key for deduplication
         const dedupKey = (job.url.includes('search-results') || job.url.includes('work-us') || job.url.includes('jobs/Jobs') || job.company === 'Suez' || job.company === 'SLB' || job.company === 'MET T&S' || job.company === 'Enerpac Tool Group') 
             ? `${job.url}|${job.title}` 
             : job.url;
@@ -581,8 +580,13 @@ export async function runMission() {
 
     await sendTelegramMessage(reportHtml);
     console.log(`💀 [WORM-AI] Mission Complete. ${newCount} new targets acquired.`);
+    return { success: true, newCount };
 }
 
+// --- EXPORT FOR SERVER ---
+export const runOnce = runMission;
+
+// --- DIRECT EXECUTION ---
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     runMission();
 }
