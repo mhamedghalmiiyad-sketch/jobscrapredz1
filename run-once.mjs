@@ -60,7 +60,7 @@ async function scrapeBakerHughes(page) {
     const url = "https://careers.bakerhughes.com/global/en/search-results?qcountry=Algeria";
     console.log(`💀 [WORM-AI] Vector A: Infiltrating BAKER HUGHES...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.jobs-list-item', { timeout: 15000 }).catch(() => null);
         return await page.evaluate(() => {
             return Array.from(document.querySelectorAll('.jobs-list-item')).map(node => {
@@ -108,7 +108,7 @@ async function scrapeRenco(page) {
     const url = "https://www.renco.it/work-us";
     console.log(`💀 [WORM-AI] Vector C: Infiltrating RENCO...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.renco-jobs-job', { timeout: 20000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('.renco-jobs-job'));
@@ -141,7 +141,7 @@ async function scrapeMsPharma(page) {
     const url = "https://app.zenats.com/en/careers_page/7-ms-pharma";
     console.log(`💀 [WORM-AI] Vector D: Infiltrating MS PHARMA...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.p-datatable-tbody', { timeout: 20000 }).catch(() => null);
         let allJobs = [];
         let hasNextPage = true;
@@ -183,7 +183,7 @@ async function scrapePipecare(page) {
     const url = "https://pipecaregroup.applytojob.com/apply";
     console.log(`💀 [WORM-AI] Vector E: Infiltrating PIPECARE GROUP...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.list-group-item', { timeout: 20000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('li.list-group-item'));
@@ -215,7 +215,7 @@ async function scrapePfizer(page) {
     const url = "https://www.pfizer.com/about/careers/search-results?langcode=en&region%5B0%5D=Algeria&count=10&sort=latest";
     console.log(`💀 [WORM-AI] Vector F: Infiltrating PFIZER...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.result-wrapper', { timeout: 25000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll('.result-wrapper table tbody tr'));
@@ -281,7 +281,7 @@ async function scrapeSiemens(page) {
     const url = "https://jobs.siemens-energy.com/en_US/jobs/Jobs/?29454=964655&29454_format=11381&listFilterMode=1&folderRecordsPerPage=20";
     console.log(`💀 [WORM-AI] Vector H: Infiltrating SIEMENS ENERGY...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('article.article--result', { timeout: 20000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('article.article--result'));
@@ -310,7 +310,7 @@ async function scrapeSuez(page) {
     const url = "https://hris-suez.csod.com/ux/ats/careersite/10/home?c=hris-suez&lq=Algeria&pl=ChIJ0XsDKGqKfg0RovjXq-O-QHE&lang=en-GB";
     console.log(`💀 [WORM-AI] Vector I: Infiltrating SUEZ...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.p-view-jobsearchresults', { timeout: 25000 }).catch(() => null);
         await sleep(2000);
         return await page.evaluate(() => {
@@ -336,7 +336,7 @@ async function scrapeSlb(page) {
     console.log(`💀 [WORM-AI] Vector J: Infiltrating SLB (Schlumberger)...`);
     
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('atomic-result-list', { timeout: 30000 }).catch(() => null);
         await sleep(5000); 
 
@@ -376,7 +376,7 @@ async function scrapeHalliburton(page) {
     const url = "https://jobs.halliburton.com/search-jobs/Algeria/543/2/2589581/28/3/50/2";
     console.log(`💀 [WORM-AI] Vector K: Infiltrating HALLIBURTON...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('#search-results-list ul', { timeout: 20000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const results = [];
@@ -403,7 +403,7 @@ async function scrapeVinci(page) {
     const url = "https://jobs.vinci.com/en/search-jobs/Algeria/1440/2/2589581/28/3/50/2";
     console.log(`💀 [WORM-AI] Vector L: Infiltrating VINCI...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.search-results--list', { timeout: 20000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const results = [];
@@ -431,7 +431,7 @@ async function scrapeMetTs(page) {
     const url = "https://careers.met-ts.net/SearchJob?What=&Where=algeria#search-results";
     console.log(`💀 [WORM-AI] Vector M: Infiltrating MET T&S...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('.job-offer__list-item', { timeout: 20000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('.job-offer__list-item'));
@@ -467,7 +467,7 @@ async function scrapeEnerpac(page) {
     const url = "https://careers.enerpactoolgroup.com/careers-home/jobs?stretchUnit=MILES&stretch=10&location=Algeria&woe=12&regionCode=DZ&page=1";
     console.log(`💀 [WORM-AI] Vector N: Infiltrating ENERPAC TOOL GROUP...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         await page.waitForSelector('mat-expansion-panel', { timeout: 25000 }).catch(() => null);
         const jobs = await page.evaluate(() => {
             const results = [];
@@ -491,10 +491,10 @@ async function scrapeEnerpac(page) {
 
 // --- 17. MODULE O: SOGJOB (Algeria) ---
 async function scrapeSogJob(page) {
-    const url = "https://sogjob.com/jobs"; // Likely entry point based on structure
+    const url = "https://sogjob.com/jobs"; 
     console.log(`💀 [WORM-AI] Vector O: Infiltrating SOGJOB...`);
     try {
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
         // Wait for job cards to load
         await page.waitForSelector('.job-card-body', { timeout: 25000 }).catch(() => null);
 
@@ -558,11 +558,15 @@ async function scrapeSogJob(page) {
 export async function runMission() {
     const browser = await puppeteer.launch({
         headless: "new",
-        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--window-size=1920,1080"]
+        args: [
+            "--no-sandbox", 
+            "--disable-setuid-sandbox", 
+            "--disable-dev-shm-usage", 
+            "--window-size=1920,1080",
+            "--disable-web-security", // Helps prevent strict CORS/Socket drops
+            "--ignore-certificate-errors"
+        ]
     });
-
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1920, height: 1080 });
 
     let sent = {};
     if (fs.existsSync(SENT_FILE)) {
@@ -573,22 +577,36 @@ export async function runMission() {
 
     let allIntel = [];
 
-    // EXECUTE VECTORS
-    allIntel.push(...await scrapeBakerHughes(page)); await sleep(1000); 
-    allIntel.push(...await scrapeDanone(page)); await sleep(1000);
-    allIntel.push(...await scrapeRenco(page)); await sleep(1000);
-    allIntel.push(...await scrapeMsPharma(page)); await sleep(1000);
-    allIntel.push(...await scrapePipecare(page)); await sleep(1000);
-    allIntel.push(...await scrapePfizer(page)); await sleep(1000);
-    allIntel.push(...await scrapeSanofi(page)); await sleep(1000);
-    allIntel.push(...await scrapeSiemens(page)); await sleep(1000);
-    allIntel.push(...await scrapeSuez(page)); await sleep(1000);
-    allIntel.push(...await scrapeSlb(page)); await sleep(1000);
-    allIntel.push(...await scrapeHalliburton(page)); await sleep(1000);
-    allIntel.push(...await scrapeVinci(page)); await sleep(1000);
-    allIntel.push(...await scrapeMetTs(page)); await sleep(1000);
-    allIntel.push(...await scrapeEnerpac(page)); await sleep(1000);
-    allIntel.push(...await scrapeSogJob(page)); // New Vector
+    // Helper function to isolate each target in its own page context
+    async function executeVector(scraperFunction) {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1920, height: 1080 });
+        try {
+            return await scraperFunction(page);
+        } catch (e) {
+            console.error(`[Vector Execution Error]: ${e.message}`);
+            return [];
+        } finally {
+            await page.close(); // Destroy the page to free memory and drop dead sockets
+        }
+    }
+
+    // EXECUTE VECTORS - Sandboxed
+    allIntel.push(...await executeVector(scrapeBakerHughes)); await sleep(1000); 
+    allIntel.push(...await executeVector(scrapeDanone)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeRenco)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeMsPharma)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapePipecare)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapePfizer)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeSanofi)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeSiemens)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeSuez)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeSlb)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeHalliburton)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeVinci)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeMetTs)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeEnerpac)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeSogJob)); 
 
     console.log(`💀 [WORM-AI] Total Intelligence Gathered: ${allIntel.length} entities.`);
 
