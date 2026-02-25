@@ -489,13 +489,14 @@ async function scrapeEnerpac(page) {
     } catch (e) { console.error(`[Enerpac] Error: ${e.message}`); return []; }
 }
 
-// --- 17. MODULE O: SOGJOB (Algeria) ---
+// --- 17. MODULE O: SOGJOB (Algeria) ---S
 async function scrapeSogJob(page) {
-    const url = "https://sogjob.com/jobs"; 
+    const url = "https://sogjob.com/"; // Changed from /jobs to the homepage
     console.log(`💀 [WORM-AI] Vector O: Infiltrating SOGJOB...`);
     try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-        // Wait for job cards to load
+        
+        // Wait for the specific job card containers to load
         await page.waitForSelector('.job-card-body', { timeout: 25000 }).catch(() => null);
 
         const jobs = await page.evaluate(() => {
@@ -504,17 +505,25 @@ async function scrapeSogJob(page) {
             const cards = document.querySelectorAll('.job-card-body');
             
             cards.forEach(card => {
+                // Get Title
                 const titleEl = card.querySelector('h5.fw-bold');
                 if (!titleEl) return;
-                
                 const title = titleEl.innerText.trim();
                 
-                // Get Link
+                // Get Link (The "عرض التفاصيل" button)
                 const linkEl = card.querySelector('a.btn-primary');
                 let href = linkEl ? linkEl.getAttribute('href') : null;
-                // Fix relative URL
+                
+                // Fix relative URL (e.g. job_details.php?id=551 -> https://sogjob.com/job_details.php?id=551)
                 if (href && !href.startsWith('http')) {
                     href = `https://sogjob.com/${href}`; 
+                }
+
+                // Get Sector/Category to use as "Company" (e.g., القطاع الحكومي)
+                let sector = "SOGJOB";
+                const sectorIcon = card.querySelector('.bi-tag-fill');
+                if (sectorIcon && sectorIcon.parentElement) {
+                    sector = sectorIcon.parentElement.innerText.trim();
                 }
 
                 // Get Location (search for the geo icon's parent text)
@@ -531,7 +540,7 @@ async function scrapeSogJob(page) {
                     posted = dateIcon.parentElement.innerText.trim();
                 }
 
-                // Generate ID from URL parameter if possible (id=536)
+                // Generate ID from URL parameter if possible (e.g., id=551)
                 let jobId = "N/A";
                 if (href) {
                     const idMatch = href.match(/id=(\d+)/);
@@ -540,7 +549,7 @@ async function scrapeSogJob(page) {
 
                 results.push({
                     title: title,
-                    company: "SOGJOB Source", // SOGJOB is an aggregator/portal
+                    company: sector, // Setting the sector as the company name so it shows up neatly in Telegram
                     location: location,
                     url: href,
                     jobId: jobId,
