@@ -489,9 +489,9 @@ async function scrapeEnerpac(page) {
     } catch (e) { console.error(`[Enerpac] Error: ${e.message}`); return []; }
 }
 
-// --- 17. MODULE O: SOGJOB (Algeria) ---S
+// --- 17. MODULE O: SOGJOB (Algeria) ---
 async function scrapeSogJob(page) {
-    const url = "https://sogjob.com/"; // Changed from /jobs to the homepage
+    const url = "https://sogjob.com/"; 
     console.log(`💀 [WORM-AI] Vector O: Infiltrating SOGJOB...`);
     try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -501,46 +501,38 @@ async function scrapeSogJob(page) {
 
         const jobs = await page.evaluate(() => {
             const results = [];
-            // Target the body of each job card
             const cards = document.querySelectorAll('.job-card-body');
             
             cards.forEach(card => {
-                // Get Title
                 const titleEl = card.querySelector('h5.fw-bold');
                 if (!titleEl) return;
                 const title = titleEl.innerText.trim();
                 
-                // Get Link (The "عرض التفاصيل" button)
                 const linkEl = card.querySelector('a.btn-primary');
                 let href = linkEl ? linkEl.getAttribute('href') : null;
                 
-                // Fix relative URL (e.g. job_details.php?id=551 -> https://sogjob.com/job_details.php?id=551)
                 if (href && !href.startsWith('http')) {
                     href = `https://sogjob.com/${href}`; 
                 }
 
-                // Get Sector/Category to use as "Company" (e.g., القطاع الحكومي)
                 let sector = "SOGJOB";
                 const sectorIcon = card.querySelector('.bi-tag-fill');
                 if (sectorIcon && sectorIcon.parentElement) {
                     sector = sectorIcon.parentElement.innerText.trim();
                 }
 
-                // Get Location (search for the geo icon's parent text)
                 let location = "Algeria";
                 const locIcon = card.querySelector('.bi-geo-alt-fill');
                 if (locIcon && locIcon.parentElement) {
                     location = locIcon.parentElement.innerText.trim();
                 }
 
-                // Get Date
                 let posted = "Recent";
                 const dateIcon = card.querySelector('.bi-calendar-check-fill');
                 if (dateIcon && dateIcon.parentElement) {
                     posted = dateIcon.parentElement.innerText.trim();
                 }
 
-                // Generate ID from URL parameter if possible (e.g., id=551)
                 let jobId = "N/A";
                 if (href) {
                     const idMatch = href.match(/id=(\d+)/);
@@ -549,7 +541,7 @@ async function scrapeSogJob(page) {
 
                 results.push({
                     title: title,
-                    company: sector, // Setting the sector as the company name so it shows up neatly in Telegram
+                    company: sector,
                     location: location,
                     url: href,
                     jobId: jobId,
@@ -563,7 +555,63 @@ async function scrapeSogJob(page) {
     } catch (e) { console.error(`[SOGJOB] Error: ${e.message}`); return []; }
 }
 
-// --- 18. CORE EXECUTION LOOP ---
+// --- 18. MODULE P: VEOLIA (Algeria) ---
+async function scrapeVeolia(page) {
+    const url = "https://jobs.veolia.com/en/search-jobs/Algeria/2702/2/2589581/28/3/50/2";
+    console.log(`💀 [WORM-AI] Vector P: Infiltrating VEOLIA...`);
+    try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+        await page.waitForSelector('#search-results-list ul li', { timeout: 20000 }).catch(() => null);
+
+        const jobs = await page.evaluate(() => {
+            const results = [];
+            // Select all job items in the results list
+            const items = Array.from(document.querySelectorAll('#search-results-list ul li'));
+
+            items.forEach(item => {
+                // Find the main anchor link
+                const linkEl = item.querySelector('a');
+                if (!linkEl) return;
+
+                // Extract Title
+                const titleEl = linkEl.querySelector('h2');
+                const title = titleEl ? titleEl.innerText.trim() : linkEl.innerText.trim();
+
+                // Extract URL
+                let href = linkEl.getAttribute('href');
+                if (href && !href.startsWith('http')) {
+                    href = `https://jobs.veolia.com${href}`;
+                }
+
+                // Extract Location
+                const locEl = item.querySelector('.job-location');
+                let location = locEl ? locEl.innerText.replace(/[\n\r]+/g, ' ').trim() : "Algeria";
+
+                // Extract Job ID
+                const jobId = linkEl.getAttribute('data-job-id') || "N/A";
+
+                if (title && href) {
+                    results.push({
+                        title: title,
+                        company: "Veolia",
+                        location: location,
+                        url: href,
+                        jobId: jobId,
+                        posted: "Check Site",
+                        source: "Veolia"
+                    });
+                }
+            });
+            return results;
+        });
+        return jobs;
+    } catch (e) { 
+        console.error(`[Veolia] Error: ${e.message}`); 
+        return []; 
+    }
+}
+
+// --- 19. CORE EXECUTION LOOP ---
 export async function runMission() {
     const browser = await puppeteer.launch({
         headless: "new",
@@ -582,7 +630,7 @@ export async function runMission() {
         sent = JSON.parse(fs.readFileSync(SENT_FILE, "utf-8"));
     }
 
-    await sendTelegramMessage("💀 <b>WORM-AI: Quindeca-Vector Scan Engaged</b>\nTarget Sector: Algeria\nModules: Baker, Danone, Renco, MS Pharma, PipeCare, Pfizer, Sanofi, Siemens, Suez, SLB, Halliburton, VINCI, MET T&S, Enerpac, SOGJOB");
+    await sendTelegramMessage("💀 <b>WORM-AI: Quindeca-Vector Scan Engaged</b>\nTarget Sector: Algeria\nModules: Baker, Danone, Renco, MS Pharma, PipeCare, Pfizer, Sanofi, Siemens, Suez, SLB, Halliburton, VINCI, MET T&S, Enerpac, SOGJOB, Veolia");
 
     let allIntel = [];
 
@@ -615,7 +663,8 @@ export async function runMission() {
     allIntel.push(...await executeVector(scrapeVinci)); await sleep(1000);
     allIntel.push(...await executeVector(scrapeMetTs)); await sleep(1000);
     allIntel.push(...await executeVector(scrapeEnerpac)); await sleep(1000);
-    allIntel.push(...await executeVector(scrapeSogJob)); 
+    allIntel.push(...await executeVector(scrapeSogJob)); await sleep(1000);
+    allIntel.push(...await executeVector(scrapeVeolia)); // NEW MODULE P 
 
     console.log(`💀 [WORM-AI] Total Intelligence Gathered: ${allIntel.length} entities.`);
 
